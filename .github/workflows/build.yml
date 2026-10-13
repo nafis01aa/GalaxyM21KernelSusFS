@@ -1,0 +1,148 @@
+name: Build Custom Kernel for Galaxy M21 (M215F)
+
+
+on:
+  workflow_dispatch:
+    inputs:
+      use_pinned_bakasusu:
+        description: 'Use BakaSU commit 5b76b884 (disable for default version)'
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  build:
+    runs-on: ubuntu-22.04
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex \
+            g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev \
+            lib32readline-dev lib32z1-dev liblz4-tool libncurses5-dev libsdl1.2-dev \
+            libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool \
+            squashfs-tools xsltproc zip zlib1g-dev libtinfo5 libncurses5
+
+      - name: Download toolchains
+        run: |
+          mkdir -p toolchains
+
+          git clone --depth=1 -b android-10.0.0_r47 \
+            https://android.googlesource.com/platform/prebuilts/gcc/linux-x86/aarch64/aarch64-linux-android-4.9 \
+            toolchains/gcc
+
+          git clone --depth=1 --filter=blob:none --sparse -b android-9.0.0_r61 \
+            https://android.googlesource.com/platform/prebuilts/clang/host/linux-x86 \
+            toolchains/clang
+
+          git -C toolchains/clang sparse-checkout set clang-4691093
+
+      - name: Setup BakaSU
+        shell: bash
+        run: |
+          set -e
+          curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash
+
+      - name: Use BakaSU old version
+        if: ${{ inputs.use_pinned_bakasusu }}
+        shell: bash
+        run: |
+          set -e
+          cd KernelSU
+          git checkout 5b76b884c75f729a220bb317aa4a4fc78f0e0e9c
+
+      - name: Verify BakaSU version
+        shell: bash
+        run: |
+          if [ -d KernelSU/.git ]; then
+            git -C KernelSU rev-parse HEAD
+          else
+            echo "KernelSU is not a Git checkout at KernelSU/"
+            exit 1
+          fi
+
+      - name: Setup NoMount (Dev)
+        shell: bash
+        run: |
+          set -e
+          curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
+
+      - name: Compile kernel
+        run: |
+          export ARCH=arm64
+          export ANDROID_MAJOR_VERSION=q
+
+          WORKSPACE=$(pwd)
+          export PATH=$WORKSPACE/toolchains/gcc/bin:$WORKSPACE/toolchains/clang/clang-4691093/bin:$PATH
+
+          TOOLCHAIN_ARGS="CROSS_COMPILE=$WORKSPACE/toolchains/gcc/bin/aarch64-linux-android- \
+          CC=$WORKSPACE/toolchains/clang/clang-4691093/bin/clang \
+          CLANG_TRIPLE=aarch64-linux-gnu- \
+          HOSTCFLAGS=-fcommon -Wno-error \
+          KCFLAGS=-Wno-error"
+
+          make $TOOLCHAIN_ARGS exynos9610-m21dd_defconfig
+          make $TOOLCHAIN_ARGS -j$(nproc)
+
+      - name: Repack boot image
+        shell: bash
+        run: |
+          set -e
+
+          WORKSPACE="$GITHUB_WORKSPACE"
+          IMGS="$GITHUB_WORKSPACE"
+          IMAGE="$WORKSPACE/arch/arm64/boot/Image"
+
+          echo "==== Checking required files ===="
+          test -f "$IMAGE" || { echo "FAILED: Kernel Image missing"; exit 1; }
+          test -f "$IMGS/stock.img" || { echo "FAILED: stock.img missing"; exit 1; }
+          test -f "$IMGS/magiskboot" || { echo "FAILED: magiskboot missing"; exit 1; }
+
+          chmod +x "$IMGS/magiskboot"
+
+          echo "==== Packing boot.img ===="
+          PACK_DIR=$(mktemp -d /tmp/bootpack.XXXXXX)
+          trap 'rm -rf "$PACK_DIR"' EXIT
+
+          cp "$IMGS/magiskboot" "$PACK_DIR/"
+          cp "$IMGS/stock.img" "$PACK_DIR/boot.img"
+          cp "$IMAGE" "$PACK_DIR/Image"
+
+          (
+            cd "$PACK_DIR"
+            ./magiskboot unpack boot.img
+            mv -f Image kernel
+            ./magiskboot repack boot.img
+          )
+
+          test -f "$PACK_DIR/new-boot.img" || {
+            echo "FAILED: Repacked boot image missing"
+            exit 1
+          }
+
+          mv -f "$PACK_DIR/new-boot.img" "$IMGS/boot.img"
+          echo "SUCCESS: $(du -h "$IMGS/boot.img")"
+
+      - name: Create TAR (Odin)
+        shell: bash
+        run: |
+          set -e
+
+          cd "$GITHUB_WORKSPACE"
+          rm -f boot.tar
+          tar -H ustar -cf boot.tar boot.img
+
+          echo "SUCCESS: $(du -h boot.tar)"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: M21-kernel
+          if-no-files-found: error
+          path: |
+            boot.tar
+            boot.img
+            arch/arm64/boot/Image
