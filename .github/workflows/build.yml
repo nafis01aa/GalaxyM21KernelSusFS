@@ -79,8 +79,9 @@ jobs:
       - name: Setup NoMount (Dev)
         shell: bash
         run: |
-          set -e
-          curl https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
+          set -euo pipefail
+          git -C NoMount fetch origin dev
+          curl -fLSs https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
 
       - name: Compile kernel
         run: |
