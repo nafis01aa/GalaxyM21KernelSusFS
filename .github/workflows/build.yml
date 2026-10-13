@@ -46,30 +46,6 @@ jobs:
           set -e
           curl -LSs "https://raw.githubusercontent.com/Baka-SU/BakaSU/main/kernel/setup.sh" | bash
 
-      - name: Use BakaSU old version
-        if: ${{ inputs.use_pinned_bakasusu }}
-        shell: bash
-        run: |
-          set -euo pipefail
-
-          BAKASU_COMMIT="5b76b884c75f729a220bb317aa4a4fc78f0e0e9c"
-
-          test -d KernelSU/.git || {
-            echo "ERROR: KernelSU is not a Git checkout at KernelSU/"
-            exit 1
-          }
-
-          git -C KernelSU fetch origin "$BAKASU_COMMIT"
-          git -C KernelSU checkout --detach "$BAKASU_COMMIT"
-
-          ACTUAL=$(git -C KernelSU rev-parse HEAD)
-          echo "BakaSU commit: $ACTUAL"
-
-          test "$ACTUAL" = "$BAKASU_COMMIT" || {
-            echo "ERROR: Checked-out commit does not match requested commit"
-            exit 1
-          }
-
       - name: Verify BakaSU version
         shell: bash
         run: |
