@@ -87,11 +87,13 @@ jobs:
             }
           fi
 
-      - name: Setup NoMount (Dev)
+      - name: Setup NoMount
         shell: bash
         run: |
           set -euo pipefail
-          curl -fLSs https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
+          NM_COMMIT=$(git -C NoMount rev-parse HEAD)
+          echo "NoMount commit: $NM_COMMIT"
+          curl -fLSs https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s -- "$NM_COMMIT"
 
       - name: Compile kernel
         run: |
