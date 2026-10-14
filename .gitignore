@@ -35,4 +35,4 @@ __pycache__/
 
 arch/arm64/boot/Image
 arch/arm64/boot/Image.gz
-arch/arm64/boot/dts/*.dtb
+arch/arm64/boot/dts/*.dtb!stock.img
