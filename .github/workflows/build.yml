@@ -76,28 +76,11 @@ jobs:
             }
           fi
 
-      - name: Diagnose NoMount setup
+      - name: Setup NoMount (Dev)
         shell: bash
         run: |
           set -euo pipefail
-
-          echo "==== NoMount checkout ===="
-          git -C NoMount remote -v
-          git -C NoMount branch -avv
-          git -C NoMount status --short
-
-          echo "==== Fetch script ===="
-          curl -fLSs \
-            https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh \
-            -o /tmp/nomount-setup.sh
-
-          echo "==== Script contents ===="
-          nl -ba /tmp/nomount-setup.sh | head -200
-
-          echo "==== Script branch/ref logic ===="
-          grep -nE 'checkout|switch|fetch|pull|branch|git ' \
-            /tmp/nomount-setup.sh || true
-          exit 1
+          curl -fLSs https://raw.githubusercontent.com/maxsteeel/nomount/refs/heads/dev/kernel/setup.sh | bash -s dev
 
       - name: Compile kernel
         run: |
